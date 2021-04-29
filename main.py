@@ -140,10 +140,13 @@ if __name__ == '__main__':
     old_odds = open_pkl("old_odds.pkl")
 
     while True:
+        print("start")
         old_news = run_scanner(old_news)
         write_pkl("old_news.pkl", old_news)
         old_odds = get_odds(old_odds)
         write_pkl("old_odds.pkl", old_odds)
+        print("finish")
         time.sleep(600)
 
 # TODO news analysis
+# TODO add more API keys
