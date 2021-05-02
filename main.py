@@ -101,9 +101,9 @@ def run_scanner(old_news):
 
 
 
-def get_odds(old_odds):
-    API_KEY = "a0b0c30b16620276f351ee9f00ab529d"
-    req = requests.get("https://api.the-odds-api.com/v3/odds/?apiKey=a0b0c30b16620276f351ee9f00ab529d&sport=soccer_epl&region=uk&mkt=h2h").json()
+def get_odds(old_odds, api_key):
+
+    req = requests.get("https://api.the-odds-api.com/v3/odds/?apiKey=" + api_key + "&sport=soccer_epl&region=uk&mkt=h2h").json()
     if req["success"] == "false":
         print("Status: " + req["status"])
         print("Msg: " + req["msg"])
@@ -134,19 +134,32 @@ def write_pkl(filename, array):
         pickle.dump(array, output, pickle.HIGHEST_PROTOCOL)
 
 if __name__ == '__main__':
+    API_KEYS = ["a0b0c30b16620276f351ee9f00ab529d", "9d72a9036fddbe605e78611480bfc9ae",
+                "c85365bd502f040a8ad6c98fd813b26e"]
+    api_key_index = 0
 
     # we open old news and old odds
     old_news = open_pkl("old_news.pkl")
     old_odds = open_pkl("old_odds.pkl")
 
+    loop_counter = 0
     while True:
-        print("start")
+
+        if loop_counter != 0 and loop_counter%498 == 0:
+            api_key_index += 1
+            api_key_index = 0 if api_key_index == 3 else api_key_index  # we come full circle
+
+
         old_news = run_scanner(old_news)
-        write_pkl("old_news.pkl", old_news)
-        old_odds = get_odds(old_odds)
-        write_pkl("old_odds.pkl", old_odds)
-        print("finish")
-        time.sleep(600)
+        old_odds = get_odds(old_odds, API_KEYS[api_key_index])
+
+        if loop_counter != 0 and loop_counter%5 == 0:
+            print("start writing")
+            write_pkl("old_odds.pkl", old_odds)
+            write_pkl("old_news.pkl", old_news)
+            print("finish writing")
+
+        loop_counter += 1
+        time.sleep(1800)
 
 # TODO news analysis
-# TODO add more API keys
