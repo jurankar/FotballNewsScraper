@@ -1,5 +1,11 @@
+# BASICS
 import datetime
 import time
+import requests
+import random
+import pickle
+
+# SELENIUM
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -7,13 +13,21 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
-import requests
-import random
-import pickle
+
+# GRAPHS
+import plotly.graph_objects as go
+import plotly.io as pio
 
 from News import News
 
-DRIVER = webdriver.Chrome("chromedriver.exe")
+# DRIVER = webdriver.Chrome("chromedriver.exe")
+
+
+def show_graph(x_axis, y_axis):
+    data = [go.Scatter(x=x_axis, y=y_axis)]
+    fig = go.Figure(data)
+    fig.show()
+
 
 def get_latest_news(old_news):
     new_news = []
@@ -43,42 +57,6 @@ def get_latest_news(old_news):
             new_news.append(i)
 
     return new_news
-
-def analyse_news(news):
-    player_name = news.find_element_by_class_name("news-update__player-link").text
-    team_name = news.find_element_by_class_name("news-update__meta").find_elements_by_tag_name("div")[0].text[1:]
-    news_headline = news.find_element_by_class_name("news-update__headline").text
-    news_text = news.find_element_by_class_name("news-update__news").text
-
-    if news_headline == "":
-        return "empty"
-
-    try:
-        injury_status = news.find_element_by_class_name("news-update__inj").text
-    except:
-        injury_status = False
-
-    good_phrases_header = ["Starting"]
-    bad_phrases_header = ["Out", "Not"]
-
-
-    if injury_status != False:
-        print(news_headline + "     Bad,  " + team_name + ",  " + player_name)
-        return "bad"
-    else:
-        for i in good_phrases_header:
-            if i in news_headline:
-                print(news_headline + "     Good,  " + team_name + ",  " + player_name)
-                return "good"
-
-        for i in bad_phrases_header:
-            if i in news_headline:
-                print(news_headline + "     Bad,  " + team_name + ",  " + player_name)
-                return "bad"
-
-        print(news_headline + "     Not assigned,  " + team_name + ",  " + player_name)
-        return "Not assigned"
-
 
 
 def run_scanner(old_news):
@@ -133,9 +111,27 @@ def write_pkl(filename, array):
     with open(filename, 'wb') as output:
         pickle.dump(array, output, pickle.HIGHEST_PROTOCOL)
 
-if __name__ == '__main__':
-    API_KEYS = ["a0b0c30b16620276f351ee9f00ab529d", "9d72a9036fddbe605e78611480bfc9ae",
-                "c85365bd502f040a8ad6c98fd813b26e"]
+
+def get_team_odds_over_time(old_odds, team_name, betting_site_name="marathonbet"):
+    match_odds_history = []
+    capture_dates = []
+
+    for odds_captured in old_odds:
+        date = odds_captured["date_captured"]
+        capture_dates.append(date)
+        for match in odds_captured["request_data"]:
+            if team_name in match["teams"]:
+                for betting_site in match["sites"]:
+                    if betting_site["site_key"] == betting_site_name:
+                        odds = betting_site["odds"]["h2h"][0]
+                        odds_avg = (betting_site["odds"]["h2h"][0] + betting_site["odds"]["h2h"][1] + betting_site["odds"]["h2h"][2])/3
+                        match_odds_history.append(odds_avg)
+                        break
+
+    return [capture_dates, match_odds_history]
+
+def capture_data():
+    API_KEYS = ["9d72a9036fddbe605e78611480bfc9ae", "c85365bd502f040a8ad6c98fd813b26e", "a0b0c30b16620276f351ee9f00ab529d"]
     api_key_index = 0
 
     # we open old news and old odds
@@ -162,4 +158,83 @@ if __name__ == '__main__':
         loop_counter += 1
         time.sleep(1800)
 
+
+def analyse_news(team_name):
+    old_news = open_pkl("old_news.pkl")
+    old_odds = open_pkl("old_odds.pkl")
+
+    data = get_team_odds_over_time(old_odds, team_name)
+    capture_dates = data[0]
+    match_odds_history = data[1]
+
+    show_graph(capture_dates, match_odds_history)
+
+if __name__ == '__main__':
+    # capture_data()
+    analyse_news("Arsenal")
+
 # TODO news analysis
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""
+def analyse_news(news):
+    player_name = news.find_element_by_class_name("news-update__player-link").text
+    team_name = news.find_element_by_class_name("news-update__meta").find_elements_by_tag_name("div")[0].text[1:]
+    news_headline = news.find_element_by_class_name("news-update__headline").text
+    news_text = news.find_element_by_class_name("news-update__news").text
+
+    if news_headline == "":
+        return "empty"
+
+    try:
+        injury_status = news.find_element_by_class_name("news-update__inj").text
+    except:
+        injury_status = False
+
+    good_phrases_header = ["Starting"]
+    bad_phrases_header = ["Out", "Not"]
+
+
+    if injury_status != False:
+        print(news_headline + "     Bad,  " + team_name + ",  " + player_name)
+        return "bad"
+    else:
+        for i in good_phrases_header:
+            if i in news_headline:
+                print(news_headline + "     Good,  " + team_name + ",  " + player_name)
+                return "good"
+
+        for i in bad_phrases_header:
+            if i in news_headline:
+                print(news_headline + "     Bad,  " + team_name + ",  " + player_name)
+                return "bad"
+
+        print(news_headline + "     Not assigned,  " + team_name + ",  " + player_name)
+        return "Not assigned"
+"""
