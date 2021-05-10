@@ -23,10 +23,51 @@ from News import News
 # DRIVER = webdriver.Chrome("chromedriver.exe")
 
 
-def show_graph(x_axis, y_axis):
-    data = [go.Scatter(x=x_axis, y=y_axis)]
-    fig = go.Figure(data)
-    fig.show()
+# Some names are different on website and our odds records  --> in this function we fix old_news team names to fit old_odds
+def clean_team_name(team_name):
+    if team_name[:2] == "/D" or team_name[:2] == "/M":
+        team_name = team_name[2:]
+
+    if team_name == "Brighton & Hove Albion":
+        team_name = "Brighton and Hove Albion"
+
+    if team_name == "Wolverhampton":
+        team_name = "Wolverhampton Wanderers"
+
+    if "West Brom" in team_name:
+        team_name = "West Bromwich Albion"
+
+    return team_name
+
+def print_all_team_names():
+    old_news = open_pkl("old_news.pkl")
+    old_odds = open_pkl("old_odds.pkl")
+
+    # print all team names in old_odds
+    team_names_odds = []
+    for odds_scan in old_odds:
+        for match in odds_scan["request_data"]:
+            if match["teams"][0] not in team_names_odds:
+                team_names_odds.append(match["teams"][0])
+            if match["teams"][1] not in team_names_odds:
+                team_names_odds.append(match["teams"][1])
+    team_names_odds.sort()
+    print("old_odds teams:")
+    print(team_names_odds)
+
+    # print all team names in old_news
+    teams_names_news = []
+    for news in old_news:
+        if clean_team_name(news.team_name) not in teams_names_news:
+            teams_names_news.append(clean_team_name(news.team_name))
+    teams_names_news.sort()
+    print("\n\nold_news teams:")
+    print(teams_names_news)
+
+
+
+
+
 
 
 def get_latest_news(old_news):
@@ -112,24 +153,6 @@ def write_pkl(filename, array):
         pickle.dump(array, output, pickle.HIGHEST_PROTOCOL)
 
 
-def get_team_odds_over_time(old_odds, team_name, betting_site_name="marathonbet"):
-    match_odds_history = []
-    capture_dates = []
-
-    for odds_captured in old_odds:
-        date = odds_captured["date_captured"]
-        capture_dates.append(date)
-        for match in odds_captured["request_data"]:
-            if team_name in match["teams"]:
-                for betting_site in match["sites"]:
-                    if betting_site["site_key"] == betting_site_name:
-                        odds = betting_site["odds"]["h2h"][0]
-                        odds_avg = (betting_site["odds"]["h2h"][0] + betting_site["odds"]["h2h"][1] + betting_site["odds"]["h2h"][2])/3
-                        match_odds_history.append(odds_avg)
-                        break
-
-    return [capture_dates, match_odds_history]
-
 def capture_data():
     API_KEYS = ["9d72a9036fddbe605e78611480bfc9ae", "c85365bd502f040a8ad6c98fd813b26e", "a0b0c30b16620276f351ee9f00ab529d"]
     api_key_index = 0
@@ -158,22 +181,112 @@ def capture_data():
         loop_counter += 1
         time.sleep(1800)
 
+# --------------------------------------------------
+# --------------------------------------------------
+# --------------------------------------------------
+def show_graph(x_axis, y_axis, title):
+    data = [go.Scatter(x=x_axis, y=y_axis)]
+    layout = go.Layout(title=go.layout.Title(text=title))
+    fig = go.Figure(data, layout)
+    fig.show()
 
-def analyse_news(team_name):
-    old_news = open_pkl("old_news.pkl")
-    old_odds = open_pkl("old_odds.pkl")
+def get_team_odds_over_time(old_odds, team_name, betting_site_name="marathonbet"):
+    match_odds_history = []
+    capture_dates = []
+    matches_commence_times = []    # we use this to serperate matches of this team
+    teams_competing = []
 
-    data = get_team_odds_over_time(old_odds, team_name)
+    for odds_captured in old_odds:
+        date = odds_captured["date_captured"]
+        capture_dates.append(date)
+        for match in odds_captured["request_data"]:
+            if team_name in match["teams"]:
+                # add commence time if not already added
+                if match["commence_time"] not in matches_commence_times:
+                    matches_commence_times.append(match["commence_time"])
+                    match_odds_history.append([])   # we append a new array of data for each match
+                    teams_competing.append(match["teams"])
+
+                # find out whitch match are we looking at --> the match_commence_time index cooresponds with the index of the array in match_odds_history we need
+                match_index = matches_commence_times.index(match["commence_time"])
+
+                # find odds
+                for betting_site in match["sites"]:
+                    if betting_site["site_key"] == betting_site_name:
+                        odds = betting_site["odds"]["h2h"][0]
+                        match_odds_history[match_index].append(odds)
+                        break
+
+    return [capture_dates, match_odds_history, teams_competing] # could be done with new class better prolly
+
+def difference_min_max_odds(odds_over_time):
+    min_val = min(odds_over_time)
+    max_val = max(odds_over_time)
+    difference = min_val/max_val
+    return difference
+
+def draw_selected_graphs(data, min_odds_difference, already_drawn_match_graphs):
     capture_dates = data[0]
     match_odds_history = data[1]
+    teams_competing = data[2]   # in this array we save which teams were competing
+    drawn_graphs = []   # here we store which matchups we drawn graphs for
 
-    show_graph(capture_dates, match_odds_history)
+    for match_index in range(len(match_odds_history)):
+        if len(match_odds_history[match_index]) > 0 and difference_min_max_odds(match_odds_history[match_index]) <= min_odds_difference and teams_competing[match_index] not in already_drawn_match_graphs:
+            drawn_graphs.append(teams_competing[match_index])
+            match_title = teams_competing[match_index][0] + " VS " + teams_competing[match_index][1]
+            show_graph(capture_dates, match_odds_history[match_index], match_title)
+            print("---------------------------------------------")
+
+    return drawn_graphs
+
+def print_relevant_news(old_news, team_name, key_news_only = True):
+    print("Printing news for " + team_name)
+    for news in old_news:
+        if clean_team_name(news.team_name) == team_name:
+            if key_news_only:
+                if news.injury_status != False:
+                    print("Date: " + str(news.date_on_website) + "         " + news.news_article)
+            else:
+                print("Date: " + str(news.date_on_website) + "         " + news.news_article)
+
+def analyse_news(min_odds_difference = 0.9):
+    old_news = open_pkl("old_news.pkl")
+    old_odds = open_pkl("old_odds.pkl")
+    all_team_names = ['Arsenal', 'Aston Villa', 'Brighton and Hove Albion', 'Burnley', 'Chelsea', 'Crystal Palace', 'Everton', 'Fulham',
+     'Leeds United', 'Leicester City', 'Liverpool', 'Manchester City', 'Manchester United', 'Newcastle United',
+     'Sheffield United', 'Southampton', 'Tottenham Hotspur', 'West Bromwich Albion', 'West Ham United',
+     'Wolverhampton Wanderers']
+
+    already_drawn_match_graphs = [] # here we store which graphs we already showed
+
+    # loop through all the teams
+    for team_name in all_team_names:    # --> kind of inneficcient
+        # get data on odds over time
+        data = get_team_odds_over_time(old_odds, team_name)
+        drawn_graphs = draw_selected_graphs(data, min_odds_difference, already_drawn_match_graphs)   # return a boolean, which tells us True, if we found some matches with difference_min_max_odds >= min_odds_difference
+        for matchup in drawn_graphs:
+            already_drawn_match_graphs.append(matchup)
+            print(matchup[0] + " VS " + matchup[1])
+            print_relevant_news(old_news, matchup[0], key_news_only=True)
+            print_relevant_news(old_news, matchup[1], key_news_only=True)
+            print("\n\n\n")
+
+
+
+# --------------------------------------------------
+# --------------------------------------------------
+# --------------------------------------------------
 
 if __name__ == '__main__':
     # capture_data()
-    analyse_news("Arsenal")
+    analyse_news(0.85)
 
-# TODO news analysis
+
+
+    # print_all_team_names()
+
+# TODO For which team are the odds
 
 
 
