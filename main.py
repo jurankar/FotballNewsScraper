@@ -15,12 +15,20 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 
 # GRAPHS
-import plotly.graph_objects as go
-import plotly.io as pio
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
+# LOCAL IMPORTS
 from News import News
+from Odds import Odds
+from MatchInfo import MatchInfo
 
-# DRIVER = webdriver.Chrome("chromedriver.exe")
+# GLOBAL VARIABLE
+TIME_BETWEEN_GRAPHS = 3
+KEY_NEWS_ONLY = True
+MIN_ODDS_DIFFERENCE_SETTING = 0.85
+DRIVER = "empty driver"
 
 
 # Some names are different on website and our odds records  --> in this function we fix old_news team names to fit old_odds
@@ -184,27 +192,47 @@ def capture_data():
 # --------------------------------------------------
 # --------------------------------------------------
 # --------------------------------------------------
-def show_graph(x_axis, y_axis, title):
-    data = [go.Scatter(x=x_axis, y=y_axis)]
-    layout = go.Layout(title=go.layout.Title(text=title))
-    fig = go.Figure(data, layout)
-    fig.show()
+def show_graph(x_axis, y_axis_array, teams_competing, title):
+    y_axis_0 = y_axis_array[0]
+    y_axis_1 = y_axis_array[1]
+    y_axis_2 = y_axis_array[2]
+
+    if (len(y_axis_1) != len(x_axis)):
+        print("error: dates_captured_array length is not equal to odds_captured_array")
+        return False
+
+    # draw it
+    df = pd.DataFrame(
+        {'x_values': x_axis,
+         teams_competing[0]: y_axis_0, teams_competing[1]: y_axis_1, 'draw': y_axis_2})
+
+    # multiple line plots
+    plt.plot('x_values', teams_competing[0], data=df, marker='', color='olive', linewidth=2)
+    plt.plot('x_values', teams_competing[1], data=df, marker='', color='red', linewidth=2)
+    plt.plot('x_values', 'draw', data=df, marker='', color='blue', linewidth=2)
+    # show legend
+    plt.legend()
+
+    # show graph
+    plt.show()
+    return True
 
 def get_team_odds_over_time(old_odds, team_name, betting_site_name="marathonbet"):
     match_odds_history = []
-    capture_dates = []
+    capture_dates_history = []
     matches_commence_times = []    # we use this to serperate matches of this team
     teams_competing = []
 
+    # get odds history
     for odds_captured in old_odds:
         date = odds_captured["date_captured"]
-        capture_dates.append(date)
         for match in odds_captured["request_data"]:
             if team_name in match["teams"]:
                 # add commence time if not already added
                 if match["commence_time"] not in matches_commence_times:
                     matches_commence_times.append(match["commence_time"])
                     match_odds_history.append([])   # we append a new array of data for each match
+                    capture_dates_history.append([])
                     teams_competing.append(match["teams"])
 
                 # find out whitch match are we looking at --> the match_commence_time index cooresponds with the index of the array in match_odds_history we need
@@ -213,11 +241,13 @@ def get_team_odds_over_time(old_odds, team_name, betting_site_name="marathonbet"
                 # find odds
                 for betting_site in match["sites"]:
                     if betting_site["site_key"] == betting_site_name:
-                        odds = betting_site["odds"]["h2h"][0]
+                        odds = Odds(betting_site["odds"]["h2h"][0], betting_site["odds"]["h2h"][1], betting_site["odds"]["h2h"][2])
                         match_odds_history[match_index].append(odds)
+                        capture_dates_history[match_index].append(date)
                         break
 
-    return [capture_dates, match_odds_history, teams_competing] # could be done with new class better prolly
+    matchInfo = MatchInfo(capture_dates_history, match_odds_history, teams_competing)
+    return matchInfo # could be done with new class better prolly
 
 def difference_min_max_odds(odds_over_time):
     min_val = min(odds_over_time)
@@ -225,20 +255,52 @@ def difference_min_max_odds(odds_over_time):
     difference = min_val/max_val
     return difference
 
-def draw_selected_graphs(data, min_odds_difference, already_drawn_match_graphs):
-    capture_dates = data[0]
-    match_odds_history = data[1]
-    teams_competing = data[2]   # in this array we save which teams were competing
+def get_odds_array(match_odds_history):
+    odds_0 = []
+    odds_1 = []
+    odds_2 = []
+    for i in match_odds_history:
+        odds_0.append(i.odds_0)
+        odds_1.append(i.odds_1)
+        odds_2.append(i.odds_2)
+
+    return [odds_0, odds_1, odds_2]
+
+def draw_selected_graphs(matchInfo, min_odds_difference_setting, already_drawn_match_graphs, old_news):
+    capture_dates = matchInfo.capture_dates
+    match_odds_history = matchInfo.match_odds_history   # here we store the odds capture on correlating capture_date --> matchInfo.match_odds_history[6] was captured on matchInfo.capture_dates[6]
+    teams_competing = matchInfo.teams_competing   # in this array we save which teams were competing
     drawn_graphs = []   # here we store which matchups we drawn graphs for
 
     for match_index in range(len(match_odds_history)):
-        if len(match_odds_history[match_index]) > 0 and difference_min_max_odds(match_odds_history[match_index]) <= min_odds_difference and teams_competing[match_index] not in already_drawn_match_graphs:
-            drawn_graphs.append(teams_competing[match_index])
-            match_title = teams_competing[match_index][0] + " VS " + teams_competing[match_index][1]
-            show_graph(capture_dates, match_odds_history[match_index], match_title)
-            print("---------------------------------------------")
+        # if we already drew a graph, we don't draw it again
+        if teams_competing[match_index] not in already_drawn_match_graphs:
+            match_odds_arrays = get_odds_array(match_odds_history[match_index])  # generates 3 arrays od odds history --> 1st team win, draw, 2nd team win
+
+            # if the odds history is empty, it means it is one of the inputs in our data, that we didn't get any info/odds on
+            if len(match_odds_history[match_index]) > 0:
+                # find biggest difference in odds from the 3 possible outcomes
+                min_odds_dif_value = 1.0
+                for i in match_odds_arrays:
+                    difference_min_max_odds_value = difference_min_max_odds(i)
+                    min_odds_dif_value = difference_min_max_odds_value if difference_min_max_odds_value < min_odds_dif_value else min_odds_dif_value
+
+                if min_odds_dif_value <= min_odds_difference_setting:
+                    drawn_graphs.append(teams_competing[match_index])
+                    match_title = teams_competing[match_index][0] + " VS " + teams_competing[match_index][1]
+                    show_graph(capture_dates[match_index], match_odds_arrays, teams_competing[match_index], match_title)
+                    print_news_for_matchup(old_news, teams_competing[match_index])
+
 
     return drawn_graphs
+
+def print_news_for_matchup(old_news, matchup):
+    print(matchup[0] + " VS " + matchup[1])
+    print_relevant_news(old_news, matchup[0], key_news_only=KEY_NEWS_ONLY)
+    print_relevant_news(old_news, matchup[1], key_news_only=KEY_NEWS_ONLY)
+    print("---------------------------------------------")
+    input("\nInput a letter and press ENTER to continue")
+    print("\n\n\n")
 
 def print_relevant_news(old_news, team_name, key_news_only = True):
     print("Printing news for " + team_name)
@@ -250,7 +312,7 @@ def print_relevant_news(old_news, team_name, key_news_only = True):
             else:
                 print("Date: " + str(news.date_on_website) + "         " + news.news_article)
 
-def analyse_news(min_odds_difference = 0.9):
+def analyse_news(min_odds_difference_setting = MIN_ODDS_DIFFERENCE_SETTING):
     old_news = open_pkl("old_news.pkl")
     old_odds = open_pkl("old_odds.pkl")
     all_team_names = ['Arsenal', 'Aston Villa', 'Brighton and Hove Albion', 'Burnley', 'Chelsea', 'Crystal Palace', 'Everton', 'Fulham',
@@ -263,14 +325,11 @@ def analyse_news(min_odds_difference = 0.9):
     # loop through all the teams
     for team_name in all_team_names:    # --> kind of inneficcient
         # get data on odds over time
-        data = get_team_odds_over_time(old_odds, team_name)
-        drawn_graphs = draw_selected_graphs(data, min_odds_difference, already_drawn_match_graphs)   # return a boolean, which tells us True, if we found some matches with difference_min_max_odds >= min_odds_difference
+        matchInfo = get_team_odds_over_time(old_odds, team_name)
+        drawn_graphs = draw_selected_graphs(matchInfo, min_odds_difference_setting, already_drawn_match_graphs, old_news)   # return which graphs we drew
         for matchup in drawn_graphs:
             already_drawn_match_graphs.append(matchup)
-            print(matchup[0] + " VS " + matchup[1])
-            print_relevant_news(old_news, matchup[0], key_news_only=True)
-            print_relevant_news(old_news, matchup[1], key_news_only=True)
-            print("\n\n\n")
+
 
 
 
@@ -279,75 +338,11 @@ def analyse_news(min_odds_difference = 0.9):
 # --------------------------------------------------
 
 if __name__ == '__main__':
-    # capture_data()
-    analyse_news(0.85)
-
-
-
-    # print_all_team_names()
-
-# TODO For which team are the odds
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"""
-def analyse_news(news):
-    player_name = news.find_element_by_class_name("news-update__player-link").text
-    team_name = news.find_element_by_class_name("news-update__meta").find_elements_by_tag_name("div")[0].text[1:]
-    news_headline = news.find_element_by_class_name("news-update__headline").text
-    news_text = news.find_element_by_class_name("news-update__news").text
-
-    if news_headline == "":
-        return "empty"
-
-    try:
-        injury_status = news.find_element_by_class_name("news-update__inj").text
-    except:
-        injury_status = False
-
-    good_phrases_header = ["Starting"]
-    bad_phrases_header = ["Out", "Not"]
-
-
-    if injury_status != False:
-        print(news_headline + "     Bad,  " + team_name + ",  " + player_name)
-        return "bad"
+    inp = input("If you want to capture data press 1.\nIf you want to analyse data press 2\n")
+    if inp == "1":
+        DRIVER = webdriver.Chrome("chromedriver.exe")
+        capture_data()
+    elif inp == "2":
+        analyse_news(0.85)
     else:
-        for i in good_phrases_header:
-            if i in news_headline:
-                print(news_headline + "     Good,  " + team_name + ",  " + player_name)
-                return "good"
-
-        for i in bad_phrases_header:
-            if i in news_headline:
-                print(news_headline + "     Bad,  " + team_name + ",  " + player_name)
-                return "bad"
-
-        print(news_headline + "     Not assigned,  " + team_name + ",  " + player_name)
-        return "Not assigned"
-"""
+        print("The input was not valid")
