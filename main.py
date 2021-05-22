@@ -172,7 +172,7 @@ def capture_data():
     loop_counter = 0
     while True:
 
-        if loop_counter != 0 and loop_counter%498 == 0:
+        if loop_counter != 0 and loop_counter%20 == 0:
             api_key_index += 1
             api_key_index = 0 if api_key_index == 3 else api_key_index  # we come full circle
 
@@ -343,6 +343,9 @@ if __name__ == '__main__':
         DRIVER = webdriver.Chrome("chromedriver.exe")
         capture_data()
     elif inp == "2":
-        analyse_news(0.85)
+        odds_quotient = float(input("Set the min-max odds quotient: "))
+        key_news_only_ = input("Do you want to print only key news? y/n")
+        KEY_NEWS_ONLY = True if key_news_only_ == "y" else False
+        analyse_news(odds_quotient)
     else:
         print("The input was not valid")
