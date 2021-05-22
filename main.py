@@ -302,7 +302,7 @@ def print_news_for_matchup(old_news, matchup):
     input("\nInput a letter and press ENTER to continue")
     print("\n\n\n")
 
-def print_relevant_news(old_news, team_name, key_news_only = True):
+def print_relevant_news(old_news, team_name, key_news_only = KEY_NEWS_ONLY):
     print("Printing news for " + team_name)
     for news in old_news:
         if clean_team_name(news.team_name) == team_name:
