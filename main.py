@@ -87,6 +87,8 @@ def get_latest_news(old_news):
     DRIVER.get("https://www.rotowire.com/soccer/news.php?league=1")
     WebDriverWait(DRIVER, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
     time.sleep(random.uniform(4.3, 6.9))
+    DRIVER.find_element_by_xpath("//div[@data-name='Expanded']").click()
+    time.sleep(random.uniform(3.3, 4.2))
 
     # List all the news
     news = DRIVER.find_elements_by_class_name("news-update")
